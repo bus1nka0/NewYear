@@ -13,34 +13,38 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
-import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ScreenUtils;
 
 public class Main extends ApplicationAdapter {
+
     private SpriteBatch sb;
     private Texture bg;
     private TextureRegion bgRegion;
     private Texture closeIcon;
+    private Texture switchMusicIcon;
     private Texture[] flakes;
-    private Array<Rectangle>[] flakeLists;
+    private Array<Flake>[] flakeLists;
     private Music[] songs;
     private int currentSong = 0;
     private OrthographicCamera cam;
     private Rectangle closeBounds;
+    private Rectangle switchMusicBounds;
     private ShapeRenderer sr;
     private Rectangle volumeBar;
     private Rectangle volumeKnob;
-    private float volume = 0.25f; // Значение по умолчанию 25%
+    private float volume = 0.25f;
     private BitmapFont font;
+    private boolean isTouchHandled = false;
 
     private static final int screenWidth = 1920;
     private static final int screenHeight = 1080;
     private static final int iconSize = 100;
     private static final int padding = 20;
     private static final int flakeCount = 40;
-    private static final int flakeSize = 128;
+    private static final int minFlakeSize = 50;
+    private static final int maxFlakeSize = 75;
     private static final int volumeBarWidth = 200;
     private static final int volumeBarHeight = 20;
 
@@ -60,6 +64,8 @@ public class Main extends ApplicationAdapter {
         bg = new Texture("backgroundNewYear.png");
         bgRegion = new TextureRegion(bg);
         closeIcon = new Texture("closeIcon.png");
+        switchMusicIcon = new Texture("musicIcon.png");
+
         flakes = new Texture[3];
         flakes[0] = new Texture("snowflake1.png");
         flakes[1] = new Texture("snowflake2.png");
@@ -74,17 +80,13 @@ public class Main extends ApplicationAdapter {
         songs[currentSong].setOnCompletionListener(music -> playNextSong());
 
         closeBounds = new Rectangle(padding, screenHeight - iconSize - padding, iconSize, iconSize);
+        switchMusicBounds = new Rectangle(padding, padding, iconSize, iconSize);
 
         flakeLists = new Array[3];
         for (int i = 0; i < 3; i++) {
             flakeLists[i] = new Array<>();
             for (int j = 0; j < flakeCount; j++) {
-                Rectangle flake = new Rectangle();
-                flake.x = MathUtils.random(0, screenWidth - flakeSize);
-                flake.y = MathUtils.random(screenHeight, screenHeight * 2);
-                flake.width = flakeSize;
-                flake.height = flakeSize;
-                flakeLists[i].add(flake);
+                flakeLists[i].add(new Flake());
             }
         }
 
@@ -103,6 +105,7 @@ public class Main extends ApplicationAdapter {
     public void render() {
         ScreenUtils.clear(0, 0, 0, 0);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
         cam.update();
         sb.setProjectionMatrix(cam.combined);
         sr.setProjectionMatrix(cam.combined);
@@ -110,10 +113,11 @@ public class Main extends ApplicationAdapter {
         sb.begin();
         sb.draw(bgRegion, 0, -30, screenWidth, screenHeight + 30);
         sb.draw(closeIcon, closeBounds.x, closeBounds.y, closeBounds.width, closeBounds.height);
+        sb.draw(switchMusicIcon, switchMusicBounds.x, switchMusicBounds.y, switchMusicBounds.width, switchMusicBounds.height);
 
         for (int i = 0; i < 3; i++) {
-            for (Rectangle flake : flakeLists[i]) {
-                sb.draw(flakes[i], flake.x, flake.y, flake.width, flake.height);
+            for (Flake flake : flakeLists[i]) {
+                sb.draw(flakes[i], flake.x, flake.y, flake.size, flake.size);
             }
         }
         sb.end();
@@ -126,7 +130,7 @@ public class Main extends ApplicationAdapter {
         sr.end();
 
         sb.begin();
-        String volumePercent = String.valueOf(Math.round(volume * 100)) + "%";
+        String volumePercent = Math.round(volume * 100) + "%";
         font.draw(sb, volumePercent, volumeBar.x + volumeBarWidth / 2f - font.getCapHeight(), volumeBar.y + volumeBarHeight + font.getCapHeight());
         sb.end();
 
@@ -138,25 +142,28 @@ public class Main extends ApplicationAdapter {
             Vector3 touchPos = new Vector3();
             touchPos.set(Gdx.input.getX(), Gdx.input.getY(), 0);
             cam.unproject(touchPos);
-            Vector2 touch = new Vector2(touchPos.x, touchPos.y);
 
-            if (closeBounds.contains(touchPos.x, touchPos.y)) {
-                Gdx.app.exit();
+            if (!isTouchHandled) {
+                if (closeBounds.contains(touchPos.x, touchPos.y)) {
+                    Gdx.app.exit();
+                } else if (switchMusicBounds.contains(touchPos.x, touchPos.y)) {
+                    playNextSong();
+                }
+                isTouchHandled = true;
             }
-            if (volumeBar.contains(touch)) {
-                volumeKnob.x = touch.x - volumeKnob.width / 2f;
+
+            if (volumeBar.contains(touchPos.x, touchPos.y)) {
+                volumeKnob.x = touchPos.x - volumeKnob.width / 2f;
                 volumeKnob.x = MathUtils.clamp(volumeKnob.x, volumeBar.x, volumeBar.x + volumeBar.width - volumeKnob.width);
                 volume = (volumeKnob.x - volumeBar.x) / (volumeBar.width - volumeKnob.width);
             }
+        } else {
+            isTouchHandled = false;
         }
 
         for (int i = 0; i < 3; i++) {
-            for (Rectangle flake : flakeLists[i]) {
-                flake.y -= 200 * Gdx.graphics.getDeltaTime();
-                if (flake.y + flake.height < 0) {
-                    flake.x = MathUtils.random(0, screenWidth - flakeSize);
-                    flake.y = screenHeight + flake.height;
-                }
+            for (Flake flake : flakeLists[i]) {
+                flake.update();
             }
         }
     }
@@ -166,6 +173,7 @@ public class Main extends ApplicationAdapter {
         sb.dispose();
         bgRegion.getTexture().dispose();
         closeIcon.dispose();
+        switchMusicIcon.dispose();
         for (Texture flake : flakes) {
             flake.dispose();
         }
@@ -174,5 +182,32 @@ public class Main extends ApplicationAdapter {
         }
         sr.dispose();
         font.dispose();
+    }
+
+    private class Flake {
+        float x, y, size, speed, dx;
+
+        Flake() {
+            reset();
+        }
+
+        void reset() {
+            x = MathUtils.random(0, screenWidth - maxFlakeSize);
+            y = MathUtils.random(screenHeight, screenHeight * 2);
+            size = MathUtils.random(minFlakeSize, maxFlakeSize);
+            speed = 200 * (1 + MathUtils.random(-0.05f, 0.05f));
+            dx = MathUtils.random(-20, 20);
+        }
+
+        void update() {
+            y -= speed * Gdx.graphics.getDeltaTime();
+            x += dx * Gdx.graphics.getDeltaTime();
+            if (x < 0 || x + size > screenWidth) {
+                dx = -dx;
+            }
+            if (y + size < 0) {
+                reset();
+            }
+        }
     }
 }
